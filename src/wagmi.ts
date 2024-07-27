@@ -1,18 +1,11 @@
-import { http, cookieStorage, createConfig, createStorage } from "wagmi";
-import { mainnet, bsc } from "wagmi/chains";
-import { coinbaseWallet, injected } from "wagmi/connectors";
+import { http, createConfig } from "wagmi";
+import { bsc } from "wagmi/chains";
 
 export function getConfig() {
   return createConfig({
-    chains: [mainnet, bsc],
-    connectors: [injected(), coinbaseWallet()],
-    storage: createStorage({
-      storage: cookieStorage,
-    }),
-    ssr: true,
+    chains: [bsc],
     transports: {
-      [mainnet.id]: http(),
-      [bsc.id]: http(),
+      [bsc.id]: http("https://bsc-dataseed1.ninicoin.io/"),
     },
   });
 }

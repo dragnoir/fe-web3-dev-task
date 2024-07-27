@@ -1,18 +1,11 @@
-"use client";
-
-import { useAccount, useConnect, useDisconnect } from "wagmi";
+import PoolList from "../components/PoolList";
 
 function App() {
-  const account = useAccount();
-  const { connectors, connect, status, error } = useConnect();
-  const { disconnect } = useDisconnect();
-
   return (
-    <>
-      <div>
-        <h2>Active staking pools from the MasterChef contract</h2>
-      </div>
-    </>
+    <div className="App">
+      <h1 className="title">PancakeSwap Staking Pools</h1>
+      <PoolList />
+    </div>
   );
 }
 
