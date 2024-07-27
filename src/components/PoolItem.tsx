@@ -9,6 +9,7 @@ interface PoolItemProps {
   rewardPercentage: number;
   isRegular: boolean;
   lpTokenAddress: string;
+  TVL: number;
 }
 
 const PoolItem: React.FC<PoolItemProps> = ({
@@ -18,6 +19,7 @@ const PoolItem: React.FC<PoolItemProps> = ({
   rewardPercentage,
   isRegular,
   lpTokenAddress,
+  TVL,
 }) => {
   return (
     <div className="pool_item">
@@ -27,7 +29,16 @@ const PoolItem: React.FC<PoolItemProps> = ({
         <p>Reward per block: {rewardPerBlock} CAKE</p>
         <p>Reward percentage: {rewardPercentage.toFixed(2)}%</p>
         <p>Pool type: {isRegular ? "Regular" : "Special"}</p>
-        <p>LP Token Address: {lpTokenAddress}</p>
+        <p>
+          <a
+            href={`https://bscscan.com/address/${lpTokenAddress}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            LP Token Address
+          </a>
+        </p>
+        <p>TVL: {TVL}</p>
       </div>
     </div>
   );

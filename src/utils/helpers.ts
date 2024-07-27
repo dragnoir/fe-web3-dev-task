@@ -108,6 +108,17 @@ export const fetchTokenPrice = async (
   return priceData[tokenAddress];
 };
 
+export const fetchTotalSupply = async (
+  publicClient: PublicClient,
+  tokenAddress: Address
+) => {
+  return publicClient.readContract({
+    address: tokenAddress,
+    abi: ERC20_ABI,
+    functionName: "totalSupply",
+  });
+};
+
 export const retry = async <T>(
   fn: () => Promise<T>,
   maxAttempts = 3,

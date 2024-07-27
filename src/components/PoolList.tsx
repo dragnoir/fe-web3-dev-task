@@ -12,6 +12,7 @@ import {
   fetchlpTokenAddress,
   fetchTokenReserves,
   fetchTokenPrice,
+  fetchTotalSupply,
   calculateRewardPerBlock,
   calculateRewardPercentage,
   retry,
@@ -25,6 +26,7 @@ interface Pool {
   rewardPercentage: number;
   isRegular: boolean;
   lpTokenAddress: string;
+  TVL: number;
 }
 
 const PoolList: React.FC = () => {
@@ -126,19 +128,17 @@ const PoolList: React.FC = () => {
       }
 
       let lpTokenSymbol = "NA";
+      let TVL = 0;
       if (isAddress(token0Address) && isAddress(token1Address)) {
         const symbol0 = await fetchTokenSymbols(publicClient, token0Address);
         const symbol1 = await fetchTokenSymbols(publicClient, token1Address);
         lpTokenSymbol = symbol0 + "-" + symbol1;
 
-        const tokenAddresses = [token0Address, token1Address];
-
+        // token prices
         const token0Price = await fetchTokenPrice(token0Address);
-        console.log("token0Price: ", token0Price);
         const token1Price = await fetchTokenPrice(token1Address);
-        console.log("token1Price: ", token1Price);
 
-        //calculate reserve
+        // calculate reserve
         // Using this calculation reserve0 = token0_contract.functions.balanceOf(pool)
         const reserve0_BigInt = await fetchTokenReserves(
           publicClient,
@@ -153,9 +153,23 @@ const PoolList: React.FC = () => {
           lpTokenAddress
         );
         const reserve1 = Number(reserv10_BigInt);
-      }
 
-      // const totalSupply = await fetchTotalSupply(publicClient, lpTokenAddress);
+        // token total supply
+        const totalSupply0 = await fetchTotalSupply(
+          publicClient,
+          token0Address
+        );
+        const totalSupply1 = await fetchTotalSupply(
+          publicClient,
+          token1Address
+        );
+        const totalSupply = totalSupply0 + totalSupply1;
+        console.log("totaSupply: ", totalSupply);
+
+        TVL =
+          (reserve0 * token0Price + reserve1 * token1Price) /
+          Number(totalSupply);
+      }
 
       /* const totalDollarValue =
         (reserves[0] * token0Price + reserves[1] * token1Price) / totalSupply;
@@ -182,6 +196,7 @@ const PoolList: React.FC = () => {
         rewardPercentage,
         isRegular,
         lpTokenAddress,
+        TVL,
       };
     });
   };
@@ -202,6 +217,7 @@ const PoolList: React.FC = () => {
             rewardPercentage={pool.rewardPercentage}
             isRegular={pool.isRegular}
             lpTokenAddress={pool.lpTokenAddress}
+            TVL={pool.TVL}
           />
         ))}
       </div>
