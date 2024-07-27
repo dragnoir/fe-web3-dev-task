@@ -11,7 +11,7 @@ import {
   fetchtoken1Address,
   fetchlpTokenAddress,
   fetchTokenReserves,
-  fetchTokenPrices,
+  fetchTokenPrice,
   calculateRewardPerBlock,
   calculateRewardPercentage,
   retry,
@@ -132,10 +132,11 @@ const PoolList: React.FC = () => {
         lpTokenSymbol = symbol0 + "-" + symbol1;
 
         const tokenAddresses = [token0Address, token1Address];
-        const tokenPrices = await fetchTokenPrices(tokenAddresses);
-        const token0Price = tokenPrices[token0Address];
+
+        const token0Price = await fetchTokenPrice(token0Address);
         console.log("token0Price: ", token0Price);
-        const token1Price = tokenPrices[token1Address];
+        const token1Price = await fetchTokenPrice(token1Address);
+        console.log("token1Price: ", token1Price);
 
         //calculate reserve
         // Using this calculation reserve0 = token0_contract.functions.balanceOf(pool)

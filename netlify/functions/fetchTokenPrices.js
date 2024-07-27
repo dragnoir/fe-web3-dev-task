@@ -1,17 +1,11 @@
-// netlify/functions/fetchTokenPrices.js
-
 const fetch = require('node-fetch');
 
-const fetchTokenPrices = async (tokenAddresses) => {
-  const url = `https://api.coingecko.com/api/v3/simple/token_price/binance-smart-chain?vs_currencies=usd&contract_addresses=${tokenAddresses.join(",")}`;
-  console.log('url: ', url);
+const fetchTokenPrice = async (tokenAddress) => {
+  const url = `https://api.coingecko.com/api/v3/simple/token_price/binance-smart-chain?vs_currencies=usd&contract_addresses=${tokenAddress}`;
   const response = await fetch(url);
   const data = await response.json();
-  const prices = {};
-  for (const address of tokenAddresses) {
-    prices[address] = data[address.toLowerCase()]?.usd || 0;
-  }
-  return prices;
+  const price = data[tokenAddress.toLowerCase()]?.usd || 0;
+  return price;
 };
 
 exports.handler = async (event) => {
@@ -22,25 +16,25 @@ exports.handler = async (event) => {
     };
   }
 
-  const { tokenAddresses } = JSON.parse(event.body);
+  const { tokenAddress } = JSON.parse(event.body);
 
-  if (!Array.isArray(tokenAddresses)) {
+  if (typeof tokenAddress !== 'string') {
     return {
       statusCode: 400,
-      body: JSON.stringify({ error: 'Invalid token addresses' }),
+      body: JSON.stringify({ error: 'Invalid token address' }),
     };
   }
 
   try {
-    const prices = await fetchTokenPrices(tokenAddresses);
+    const price = await fetchTokenPrice(tokenAddress);
     return {
       statusCode: 200,
-      body: JSON.stringify(prices),
+      body: JSON.stringify({ [tokenAddress]: price }),
     };
   } catch (error) {
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'Failed to fetch token prices' }),
+      body: JSON.stringify({ error: 'Failed to fetch token price' }),
     };
   }
 };

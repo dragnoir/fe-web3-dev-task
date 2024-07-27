@@ -91,21 +91,21 @@ export const calculateRewardPercentage = (
   return (Number(allocPoint) / Number(totalSpecialAllocPoint)) * 100;
 };
 
-export const fetchTokenPrices = async (
-  tokenAddresses: string[]
-): Promise<Record<string, number>> => {
+export const fetchTokenPrice = async (
+  tokenAddress: string
+): Promise<number> => {
   const response = await fetch("/.netlify/functions/fetchTokenPrices", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ tokenAddresses }),
+    body: JSON.stringify({ tokenAddress }),
   });
   if (!response.ok) {
-    throw new Error("Failed to fetch token prices");
+    throw new Error("Failed to fetch token price");
   }
-  const prices = await response.json();
-  return prices;
+  const priceData = await response.json();
+  return priceData[tokenAddress];
 };
 
 export const retry = async <T>(
