@@ -5,6 +5,9 @@ import {
   ERC20_ABI,
   MASTERCHEF_ADDRESS,
 } from "../contracts/abis";
+import BigNumber from "bignumber.js";
+
+export const BLOCKS_PER_YEAR = 10512000; // From https://github.com/pancakeswap/pancake-frontend/blob/5bc14994d8cd1334adb48acf0c40a2e68162c64b/src/utils/apr.ts#L2
 
 export const fetchPoolInfo = async (
   publicClient: PublicClient,
@@ -117,6 +120,30 @@ export const fetchTotalSupply = async (
     abi: ERC20_ABI,
     functionName: "totalSupply",
   });
+};
+
+/**
+ * Get the APR value in %
+ * @param stakingTokenPrice Token price in the same quote currency
+ * @param rewardTokenPrice Token price in the same quote currency
+ * @param totalStaked Total amount of stakingToken in the pool
+ * @param tokenPerBlock Amount of new cake allocated to the pool for each new block
+ * @returns Null if the APR is NaN or infinite.
+ */
+export const getPoolApr = (
+  stakingTokenPrice: number,
+  rewardTokenPrice: number,
+  totalStaked: number,
+  tokenPerBlock: number
+): number => {
+  const totalRewardPricePerYear = new BigNumber(rewardTokenPrice)
+    .times(tokenPerBlock)
+    .times(BLOCKS_PER_YEAR);
+  const totalStakingTokenInPool = new BigNumber(stakingTokenPrice).times(
+    totalStaked
+  );
+  const apr = totalRewardPricePerYear.div(totalStakingTokenInPool).times(100);
+  return apr.isNaN() || !apr.isFinite() ? 0 : apr.toNumber();
 };
 
 export const retry = async <T>(
