@@ -4,6 +4,7 @@ const fetch = require('node-fetch');
 
 const fetchTokenPrices = async (tokenAddresses) => {
   const url = `https://api.coingecko.com/api/v3/simple/token_price/binance-smart-chain?vs_currencies=usd&contract_addresses=${tokenAddresses.join(",")}`;
+  console.log('url: ', url);
   const response = await fetch(url);
   const data = await response.json();
   const prices = {};
