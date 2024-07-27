@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useReadContract, usePublicClient } from "wagmi";
 import { Address, formatEther, isAddress } from "viem";
 import { MASTERCHEF_ABI, MASTERCHEF_ADDRESS } from "../contracts/abis";
@@ -28,14 +28,19 @@ interface Pool {
   rewardPerBlock: bigint;
   rewardPercentage: number;
   isRegular: boolean;
-  lpTokenAddress: string;
-  TVL: number;
+  lpTokenAddress: `0x${string}`;
+  TVL: number | "N/A";
 }
+
+const BATCH_SIZE = 10; // Number of pools to fetch in each batch
+const RETRY_DELAY = 2000; // Delay between retries in milliseconds
+const PRICE_FETCH_TIMEOUT = 5000; // Timeout for price fetching in milliseconds
 
 const PoolList: React.FC = () => {
   const [pools, setPools] = useState<Pool[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
 
   const publicClient = usePublicClient();
 
@@ -65,132 +70,184 @@ const PoolList: React.FC = () => {
     args: [false], // for special pools
   });
 
+  const fetchPoolData = useCallback(
+    async (pid: number): Promise<Pool | null> => {
+      return retry<Pool | null>(
+        async () => {
+          const poolInfo = await fetchPoolInfo(publicClient, pid);
+          const [
+            accCakePerShare,
+            lastRewardBlock,
+            allocPoint,
+            totalBoostedShare,
+            isRegular,
+          ] = poolInfo;
+
+          const lpTokenAddress = await fetchlpTokenAddress(publicClient, pid);
+
+          let token0Address = 0 as unknown as Address;
+          let token1Address = 0 as unknown as Address;
+          try {
+            token0Address = await fetchtoken0Address(
+              publicClient,
+              lpTokenAddress
+            );
+            token1Address = await fetchtoken1Address(
+              publicClient,
+              lpTokenAddress
+            );
+          } catch (error) {
+            console.error("Error fetching token addresses:", error);
+          }
+
+          let lpTokenSymbol = "NA";
+          let TVL: number | "N/A" = "N/A";
+          if (isAddress(token0Address) && isAddress(token1Address)) {
+            const [symbol0, symbol1] = await Promise.all([
+              fetchTokenSymbols(publicClient, token0Address),
+              fetchTokenSymbols(publicClient, token1Address),
+            ]);
+            lpTokenSymbol = `${symbol0}-${symbol1}`;
+
+            const fetchPriceWithTimeout = async (
+              tokenAddress: string
+            ): Promise<number> => {
+              try {
+                const price = await Promise.race([
+                  fetchTokenPrice(tokenAddress),
+                  new Promise<number>((_, reject) =>
+                    setTimeout(
+                      () => reject(new Error("Price fetch timeout")),
+                      PRICE_FETCH_TIMEOUT
+                    )
+                  ),
+                ]);
+                return price;
+              } catch (error) {
+                console.error(
+                  `Error fetching price for token ${tokenAddress}:`,
+                  error
+                );
+                return 0;
+              }
+            };
+
+            const [token0Price, token1Price] = await Promise.all([
+              fetchPriceWithTimeout(token0Address),
+              fetchPriceWithTimeout(token1Address),
+            ]);
+
+            if (token0Price === 0 || token1Price === 0) {
+              TVL = "N/A";
+            } else {
+              const [
+                reserve0_BigInt,
+                reserv10_BigInt,
+                totalSupply0,
+                totalSupply1,
+              ] = await Promise.all([
+                fetchTokenReserves(publicClient, token0Address, lpTokenAddress),
+                fetchTokenReserves(publicClient, token1Address, lpTokenAddress),
+                fetchTotalSupply(publicClient, token0Address),
+                fetchTotalSupply(publicClient, token1Address),
+              ]);
+
+              const reserve0 = Number(reserve0_BigInt);
+              const reserve1 = Number(reserv10_BigInt);
+              const totalSupply = totalSupply0 + totalSupply1;
+
+              TVL =
+                (reserve0 * token0Price + reserve1 * token1Price) /
+                Number(totalSupply);
+            }
+          }
+
+          const cakePerBlock = isRegular
+            ? regularCakePerBlock!
+            : specialCakePerBlock!;
+
+          const rewardPerBlock = calculateRewardPerBlock(
+            cakePerBlock,
+            allocPoint,
+            totalSpecialAllocPoint!
+          );
+          const rewardPercentage = calculateRewardPercentage(
+            allocPoint,
+            totalSpecialAllocPoint!
+          );
+
+          return {
+            pid,
+            lpTokenSymbol,
+            rewardPerBlock,
+            rewardPercentage,
+            isRegular,
+            lpTokenAddress,
+            TVL,
+          };
+        },
+        3,
+        RETRY_DELAY
+      );
+    },
+    [
+      publicClient,
+      regularCakePerBlock,
+      specialCakePerBlock,
+      totalSpecialAllocPoint,
+    ]
+  );
+
+  const fetchPoolsBatch = useCallback(
+    async (start: number, end: number) => {
+      const poolPromises = [];
+      for (let i = start; i < end && i < Number(poolLength); i++) {
+        poolPromises.push(fetchPoolData(i));
+      }
+      const poolsData = await Promise.all(poolPromises);
+      return poolsData.filter((pool): pool is Pool => pool !== null);
+    },
+    [fetchPoolData, poolLength]
+  );
+
   useEffect(() => {
-    console.log("poolLength", poolLength);
-    console.log("totalSpecialAllocPoint", totalSpecialAllocPoint);
-    console.log("regularCakePerBlock", regularCakePerBlock);
-    console.log("specialCakePerBlock", specialCakePerBlock);
     if (
       poolLength &&
       totalSpecialAllocPoint &&
       regularCakePerBlock &&
       specialCakePerBlock
     ) {
-      fetchPools();
+      const fetchAllPools = async () => {
+        try {
+          setLoading(true);
+          setError(null);
+          const allPools: Pool[] = [];
+          const totalPools = Number(poolLength);
+
+          for (let i = 0; i < totalPools; i += BATCH_SIZE) {
+            const batchPools = await fetchPoolsBatch(i, i + BATCH_SIZE);
+            allPools.push(...batchPools);
+            setProgress(Math.min(100, ((i + BATCH_SIZE) / totalPools) * 100));
+            setPools((prevPools) => [...prevPools, ...batchPools]);
+          }
+
+          setLoading(false);
+        } catch (err) {
+          console.error("Error fetching pools:", err);
+          setError("Failed to fetch all pools. Please try again.");
+          setLoading(false);
+        }
+      };
+
+      fetchAllPools();
     }
   }, [
     poolLength,
     totalSpecialAllocPoint,
     regularCakePerBlock,
     specialCakePerBlock,
+    fetchPoolsBatch,
   ]);
-
-  const fetchPools = async () => {
-    try {
-      const poolPromises = [];
-      for (let i = 0; i < Number(poolLength); i++) {
-        console.log("on pool", i);
-        poolPromises.push(fetchPoolData(i));
-      }
-
-      const poolsData = await Promise.all(poolPromises);
-      setPools(poolsData.filter((pool): pool is Pool => pool !== null));
-      setLoading(false);
-    } catch (err) {
-      console.error("Error fetching pools:", err);
-      setError("Failed to fetch pools. Please try again.");
-      setLoading(false);
-    }
-  };
-
-  const fetchPoolData = async (pid: number): Promise<Pool | null> => {
-    return retry(async () => {
-      const poolInfo = await fetchPoolInfo(publicClient, pid);
-      console.log("pid: ", pid);
-      console.log("poolInfo: ", poolInfo);
-
-      const accCakePerShare = poolInfo[0]; // uint256 : 17592196679036163
-      const lastRewardBlock = poolInfo[1]; // uint256 : 40596821
-      const allocPoint = poolInfo[2]; // uint256 : 0
-      const totalBoostedShare = poolInfo[3]; // uint256 : 10564818144122263031861
-      const isRegular = poolInfo[4]; // bool : true
-
-      const lpTokenAddress = await fetchlpTokenAddress(publicClient, pid);
-
-      let token0Address = 0 as unknown as Address;
-      let token1Address = 0 as unknown as Address;
-      try {
-        token0Address = await fetchtoken0Address(publicClient, lpTokenAddress);
-        token1Address = await fetchtoken1Address(publicClient, lpTokenAddress);
-      } catch (error) {
-        console.error("Error fetching token addresses:", error);
-      }
-
-      let lpTokenSymbol = "NA";
-      let TVL = 0;
-      if (isAddress(token0Address) && isAddress(token1Address)) {
-        const symbol0 = await fetchTokenSymbols(publicClient, token0Address);
-        const symbol1 = await fetchTokenSymbols(publicClient, token1Address);
-        lpTokenSymbol = symbol0 + "-" + symbol1;
-
-        const token0Price = await fetchTokenPrice(token0Address);
-        const token1Price = await fetchTokenPrice(token1Address);
-
-        const reserve0_BigInt = await fetchTokenReserves(
-          publicClient,
-          token0Address,
-          lpTokenAddress
-        );
-        const reserve0 = Number(reserve0_BigInt);
-
-        const reserv10_BigInt = await fetchTokenReserves(
-          publicClient,
-          token1Address,
-          lpTokenAddress
-        );
-        const reserve1 = Number(reserv10_BigInt);
-
-        const totalSupply0 = await fetchTotalSupply(
-          publicClient,
-          token0Address
-        );
-        const totalSupply1 = await fetchTotalSupply(
-          publicClient,
-          token1Address
-        );
-        const totalSupply = totalSupply0 + totalSupply1;
-        console.log("totaSupply: ", totalSupply);
-
-        TVL =
-          (reserve0 * token0Price + reserve1 * token1Price) /
-          Number(totalSupply);
-      }
-
-      const cakePerBlock = isRegular
-        ? regularCakePerBlock!
-        : specialCakePerBlock!;
-
-      const rewardPerBlock = calculateRewardPerBlock(
-        cakePerBlock,
-        allocPoint,
-        totalSpecialAllocPoint!
-      );
-      const rewardPercentage = calculateRewardPercentage(
-        allocPoint,
-        totalSpecialAllocPoint!
-      );
-
-      return {
-        pid,
-        lpTokenSymbol,
-        rewardPerBlock,
-        rewardPercentage,
-        isRegular,
-        lpTokenAddress,
-        TVL,
-      };
-    });
-  };
 
   const columnDefs: ColDef<Pool>[] = useMemo(
     () => [
@@ -226,12 +283,28 @@ const PoolList: React.FC = () => {
         sortable: true,
         filter: true,
       },
-      { headerName: "TVL", field: "TVL", sortable: true, filter: true },
+      {
+        headerName: "TVL",
+        field: "TVL",
+        sortable: true,
+        filter: true,
+        valueFormatter: (params) =>
+          params.value === "N/A"
+            ? "N/A"
+            : `$${Number(params.value).toFixed(2)}`,
+      },
     ],
     []
   );
 
-  if (loading) return <div>Loading pools...</div>;
+  if (loading) {
+    return (
+      <div>
+        <p>Loading pools... {progress.toFixed(2)}% complete</p>
+        <progress value={progress} max="100" />
+      </div>
+    );
+  }
   if (error) return <div>{error}</div>;
 
   return (
