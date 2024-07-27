@@ -18,37 +18,62 @@ export const fetchPoolInfo = async (
   });
 };
 
-export const fetchTokenSymbols = async (
+export const fetchlpTokenAddress = async (
+  publicClient: PublicClient,
+  pid: number
+) => {
+  return publicClient.readContract({
+    address: MASTERCHEF_ADDRESS,
+    abi: MASTERCHEF_ABI,
+    functionName: "lpToken",
+    args: [BigInt(pid)],
+  });
+};
+
+export const fetchTokenReserves = async (
+  publicClient: PublicClient,
+  tokenAddress: Address,
+  lpTokenAddress: Address
+) => {
+  return publicClient.readContract({
+    address: tokenAddress,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: [lpTokenAddress],
+  });
+};
+
+export const fetchtoken0Address = async (
   publicClient: PublicClient,
   lpTokenAddress: Address
 ) => {
-  const [token0Address, token1Address] = await Promise.all([
-    publicClient.readContract({
-      address: lpTokenAddress,
-      abi: PANCAKEPAIR_ABI,
-      functionName: "token0",
-    }),
-    publicClient.readContract({
-      address: lpTokenAddress,
-      abi: PANCAKEPAIR_ABI,
-      functionName: "token1",
-    }),
-  ]);
+  return publicClient.readContract({
+    address: lpTokenAddress,
+    abi: PANCAKEPAIR_ABI,
+    functionName: "token0",
+  });
+};
 
-  const [symbol0, symbol1] = await Promise.all([
-    publicClient.readContract({
-      address: token0Address,
-      abi: ERC20_ABI,
-      functionName: "symbol",
-    }),
-    publicClient.readContract({
-      address: token1Address,
-      abi: ERC20_ABI,
-      functionName: "symbol",
-    }),
-  ]);
+export const fetchtoken1Address = async (
+  publicClient: PublicClient,
+  lpTokenAddress: Address
+) => {
+  return publicClient.readContract({
+    address: lpTokenAddress,
+    abi: PANCAKEPAIR_ABI,
+    functionName: "token1",
+  });
+};
 
-  return `${symbol0}-${symbol1}`;
+export const fetchTokenSymbols = async (
+  publicClient: PublicClient,
+  token1Address: Address
+) => {
+  return publicClient.readContract({
+    address: token1Address,
+    abi: ERC20_ABI,
+    functionName: "symbol",
+  });
 };
 
 export const calculateRewardPerBlock = (
@@ -64,6 +89,23 @@ export const calculateRewardPercentage = (
   totalSpecialAllocPoint: bigint
 ) => {
   return (Number(allocPoint) / Number(totalSpecialAllocPoint)) * 100;
+};
+
+export const fetchTokenPrices = async (
+  tokenAddresses: string[]
+): Promise<Record<string, number>> => {
+  const response = await fetch("/api/tokenPrices", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ tokenAddresses }),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to fetch token prices");
+  }
+  const prices = await response.json();
+  return prices;
 };
 
 export const retry = async <T>(

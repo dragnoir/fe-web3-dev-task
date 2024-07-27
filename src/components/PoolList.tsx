@@ -2,11 +2,16 @@
 
 import React, { useState, useEffect } from "react";
 import { useReadContract, usePublicClient } from "wagmi";
-import { formatEther } from "viem";
+import { Address, formatEther, isAddress } from "viem";
 import { MASTERCHEF_ABI, MASTERCHEF_ADDRESS } from "../contracts/abis";
 import {
   fetchPoolInfo,
   fetchTokenSymbols,
+  fetchtoken0Address,
+  fetchtoken1Address,
+  fetchlpTokenAddress,
+  fetchTokenReserves,
+  fetchTokenPrices,
   calculateRewardPerBlock,
   calculateRewardPercentage,
   retry,
@@ -18,6 +23,8 @@ interface Pool {
   lpTokenSymbol: string;
   rewardPerBlock: bigint;
   rewardPercentage: number;
+  isRegular: boolean;
+  lpTokenAddress: string;
 }
 
 const PoolList: React.FC = () => {
@@ -103,12 +110,55 @@ const PoolList: React.FC = () => {
       const totalBoostedShare = poolInfo[3]; // uint256 : 10564818144122263031861
       const isRegular = poolInfo[4]; // bool : true
 
-      if (Number(allocPoint) === 0) return null; // Skip inactive pools
+      // This line is commented cause not all allocPoint === 0 has yoken0 or token1 properties
+      // if (Number(allocPoint) === 0) return null; // Skip inactive pools
 
-      /* const lpTokenSymbol = await fetchTokenSymbols(
-        publicClient,
-        poolInfo.lpToken
-      );*/
+      const lpTokenAddress = await fetchlpTokenAddress(publicClient, pid);
+
+      // Fetching for token 0 Address, sometimes it's not available
+      let token0Address = 0 as unknown as Address;
+      let token1Address = 0 as unknown as Address;
+      try {
+        token0Address = await fetchtoken0Address(publicClient, lpTokenAddress);
+        token1Address = await fetchtoken1Address(publicClient, lpTokenAddress);
+      } catch (error) {
+        console.error("Error fetching token addresses:", error);
+      }
+
+      let lpTokenSymbol = "NA";
+      if (isAddress(token0Address) && isAddress(token1Address)) {
+        const symbol0 = await fetchTokenSymbols(publicClient, token0Address);
+        const symbol1 = await fetchTokenSymbols(publicClient, token1Address);
+        lpTokenSymbol = symbol0 + "-" + symbol1;
+
+        const tokenAddresses = [token0Address, token1Address];
+        const tokenPrices = await fetchTokenPrices(tokenAddresses);
+        const token0Price = tokenPrices[token0Address];
+        console.log("token0Price: ", token0Price);
+        const token1Price = tokenPrices[token1Address];
+
+        //calculate reserve
+        // Using this calculation reserve0 = token0_contract.functions.balanceOf(pool)
+        const reserve0_BigInt = await fetchTokenReserves(
+          publicClient,
+          token0Address,
+          lpTokenAddress
+        );
+        const reserve0 = Number(reserve0_BigInt);
+
+        const reserv10_BigInt = await fetchTokenReserves(
+          publicClient,
+          token1Address,
+          lpTokenAddress
+        );
+        const reserve1 = Number(reserv10_BigInt);
+      }
+
+      // const totalSupply = await fetchTotalSupply(publicClient, lpTokenAddress);
+
+      /* const totalDollarValue =
+        (reserves[0] * token0Price + reserves[1] * token1Price) / totalSupply;
+        */
 
       const cakePerBlock = isRegular
         ? regularCakePerBlock!
@@ -126,9 +176,11 @@ const PoolList: React.FC = () => {
 
       return {
         pid,
-        lpTokenSymbol: "CAKE",
+        lpTokenSymbol,
         rewardPerBlock,
         rewardPercentage,
+        isRegular,
+        lpTokenAddress,
       };
     });
   };
@@ -139,15 +191,19 @@ const PoolList: React.FC = () => {
   return (
     <div className="pool-list">
       <h2 className="sub_title">Active Staking Pools:</h2>
-      {pools.map((pool) => (
-        <PoolItem
-          key={pool.pid}
-          poolId={pool.pid}
-          lpTokenSymbol={pool.lpTokenSymbol}
-          rewardPerBlock={formatEther(pool.rewardPerBlock)}
-          rewardPercentage={pool.rewardPercentage}
-        />
-      ))}
+      <div className="pool_items">
+        {pools.map((pool) => (
+          <PoolItem
+            key={pool.pid}
+            poolId={pool.pid}
+            lpTokenSymbol={pool.lpTokenSymbol}
+            rewardPerBlock={formatEther(pool.rewardPerBlock)}
+            rewardPercentage={pool.rewardPercentage}
+            isRegular={pool.isRegular}
+            lpTokenAddress={pool.lpTokenAddress}
+          />
+        ))}
+      </div>
     </div>
   );
 };
