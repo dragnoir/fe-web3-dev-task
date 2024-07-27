@@ -94,7 +94,7 @@ export const calculateRewardPercentage = (
 export const fetchTokenPrices = async (
   tokenAddresses: string[]
 ): Promise<Record<string, number>> => {
-  const response = await fetch("/api/tokenPrices", {
+  const response = await fetch("/.netlify/functions/fetchTokenPrices", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
