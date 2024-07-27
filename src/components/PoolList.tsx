@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useReadContract, usePublicClient } from "wagmi";
 import { Address, formatEther, isAddress } from "viem";
 import { MASTERCHEF_ABI, MASTERCHEF_ADDRESS } from "../contracts/abis";
@@ -17,7 +17,9 @@ import {
   calculateRewardPercentage,
   retry,
 } from "../utils/helpers";
-import PoolItem from "./PoolItem";
+import { AgGridReact } from "ag-grid-react";
+import "ag-grid-community/styles/ag-grid.css";
+import "ag-grid-community/styles/ag-theme-alpine.css";
 
 interface Pool {
   pid: number;
@@ -112,12 +114,8 @@ const PoolList: React.FC = () => {
       const totalBoostedShare = poolInfo[3]; // uint256 : 10564818144122263031861
       const isRegular = poolInfo[4]; // bool : true
 
-      // This line is commented cause not all allocPoint === 0 has yoken0 or token1 properties
-      // if (Number(allocPoint) === 0) return null; // Skip inactive pools
-
       const lpTokenAddress = await fetchlpTokenAddress(publicClient, pid);
 
-      // Fetching for token 0 Address, sometimes it's not available
       let token0Address = 0 as unknown as Address;
       let token1Address = 0 as unknown as Address;
       try {
@@ -134,12 +132,9 @@ const PoolList: React.FC = () => {
         const symbol1 = await fetchTokenSymbols(publicClient, token1Address);
         lpTokenSymbol = symbol0 + "-" + symbol1;
 
-        // token prices
         const token0Price = await fetchTokenPrice(token0Address);
         const token1Price = await fetchTokenPrice(token1Address);
 
-        // calculate reserve
-        // Using this calculation reserve0 = token0_contract.functions.balanceOf(pool)
         const reserve0_BigInt = await fetchTokenReserves(
           publicClient,
           token0Address,
@@ -154,7 +149,6 @@ const PoolList: React.FC = () => {
         );
         const reserve1 = Number(reserv10_BigInt);
 
-        // token total supply
         const totalSupply0 = await fetchTotalSupply(
           publicClient,
           token0Address
@@ -170,10 +164,6 @@ const PoolList: React.FC = () => {
           (reserve0 * token0Price + reserve1 * token1Price) /
           Number(totalSupply);
       }
-
-      /* const totalDollarValue =
-        (reserves[0] * token0Price + reserves[1] * token1Price) / totalSupply;
-        */
 
       const cakePerBlock = isRegular
         ? regularCakePerBlock!
@@ -201,25 +191,58 @@ const PoolList: React.FC = () => {
     });
   };
 
+  const columnDefs = useMemo(
+    () => [
+      { headerName: "PID", field: "pid", sortable: true, filter: true },
+      {
+        headerName: "LP Token Symbol",
+        field: "lpTokenSymbol",
+        sortable: true,
+        filter: true,
+      },
+      {
+        headerName: "Reward Per Block",
+        field: "rewardPerBlock",
+        sortable: true,
+        filter: true,
+        valueFormatter: (params) => formatEther(params.value),
+      },
+      {
+        headerName: "Reward Percentage",
+        field: "rewardPercentage",
+        sortable: true,
+        filter: true,
+      },
+      {
+        headerName: "Is Regular",
+        field: "isRegular",
+        sortable: true,
+        filter: true,
+      },
+      {
+        headerName: "LP Token Address",
+        field: "lpTokenAddress",
+        sortable: true,
+        filter: true,
+      },
+      { headerName: "TVL", field: "TVL", sortable: true, filter: true },
+    ],
+    []
+  );
+
   if (loading) return <div>Loading pools...</div>;
   if (error) return <div>{error}</div>;
 
   return (
     <div className="pool-list">
-      <h2 className="sub_title">Active Staking Pools:</h2>
-      <div className="pool_items">
-        {pools.map((pool) => (
-          <PoolItem
-            key={pool.pid}
-            poolId={pool.pid}
-            lpTokenSymbol={pool.lpTokenSymbol}
-            rewardPerBlock={formatEther(pool.rewardPerBlock)}
-            rewardPercentage={pool.rewardPercentage}
-            isRegular={pool.isRegular}
-            lpTokenAddress={pool.lpTokenAddress}
-            TVL={pool.TVL}
-          />
-        ))}
+      <h2 className="sub_title">List of Staking Pools:</h2>
+      <div className="ag-theme-alpine" style={{ height: 600, width: "100%" }}>
+        <AgGridReact
+          rowData={pools}
+          columnDefs={columnDefs}
+          pagination={true}
+          paginationPageSize={10}
+        />
       </div>
     </div>
   );

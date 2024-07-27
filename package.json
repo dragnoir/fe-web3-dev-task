@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@tanstack/react-query": "5.45.1",
+    "ag-grid-community": "^32.0.2",
+    "ag-grid-react": "^32.0.2",
     "bignumber.js": "^9.1.2",
     "next": "14.2.4",
     "react": "^18.3.1",
