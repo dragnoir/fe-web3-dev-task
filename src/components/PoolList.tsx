@@ -18,6 +18,7 @@ import {
   retry,
 } from "../utils/helpers";
 import { AgGridReact } from "ag-grid-react";
+import { ColDef } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 
@@ -191,7 +192,7 @@ const PoolList: React.FC = () => {
     });
   };
 
-  const columnDefs = useMemo(
+  const columnDefs: ColDef<Pool>[] = useMemo(
     () => [
       { headerName: "PID", field: "pid", sortable: true, filter: true },
       {
@@ -205,7 +206,7 @@ const PoolList: React.FC = () => {
         field: "rewardPerBlock",
         sortable: true,
         filter: true,
-        valueFormatter: (params) => formatEther(params.value),
+        valueFormatter: (params) => formatEther(params.value as bigint),
       },
       {
         headerName: "Reward Percentage",
